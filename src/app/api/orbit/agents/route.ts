@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logApiUsage, requireApiPrincipal } from '@/lib/api-key-auth';
 import {
   createAgent,
   createAssistantFromScratch,
@@ -17,6 +18,12 @@ function buildSystemPrompt(base: string, hasKnowledgeBase: boolean): string {
 }
 
 export async function POST(req: Request) {
+  const startedAtMs = Date.now();
+  const auth = await requireApiPrincipal(req);
+  if (!auth.ok) return auth.response;
+
+  let status = 200;
+  let errorMessage: string | null = null;
   try {
     const body = await req.json();
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds.filter((id: unknown) => typeof id === 'string') : [];
@@ -90,6 +97,17 @@ export async function POST(req: Request) {
     const message = isValidationError
       ? 'Invalid agent configuration. Please try again or contact support.'
       : raw;
-    return NextResponse.json({ error: message }, { status: isValidationError ? 400 : 500 });
+    status = isValidationError ? 400 : 500;
+    errorMessage = message;
+    return NextResponse.json({ error: message }, { status });
+  } finally {
+    await logApiUsage({
+      request: req,
+      principal: auth.principal,
+      endpoint: "/api/orbit/agents",
+      statusCode: status,
+      startedAtMs,
+      errorMessage,
+    });
   }
 }

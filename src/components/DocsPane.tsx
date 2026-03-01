@@ -21,6 +21,15 @@ const INBOUND_CALL_NUMBER = "+1 (844) 418 2027";
 interface DocsPaneProps {
   apiBaseUrl: string;
   onCopyFeedback: (msg: string) => void;
+  isAuthenticated?: boolean;
+  apiKeyName?: string;
+  onApiKeyNameChange?: (value: string) => void;
+  onCreateApiKey?: () => void;
+  onRefreshApiKeys?: () => void;
+  isApiKeysLoading?: boolean;
+  apiKeysStatus?: string;
+  newlyCreatedApiKey?: string;
+  onCopyNewApiKey?: () => void;
 }
 
 type DocTab = "documentation" | "api-reference";
@@ -46,12 +55,16 @@ const ENDPOINTS = [
     responseExample: { type: "audio/mpeg", blob: "..." },
     examples: {
       curl: (base: string) => `curl -X POST "${base}/echo/tts" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"voiceId":"EXAVITQu4vr4xnSDxMaL","text":"Hello world","modelId":"echo_flash_v2.5","outputFormat":"mp3_44100_128"}' \\
   --output audio.mp3`,
       js: (base: string) => `const res = await fetch("${base}/echo/tts", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+  },
   body: JSON.stringify({
     voiceId: "EXAVITQu4vr4xnSDxMaL",
     text: "Hello world",
@@ -61,7 +74,9 @@ const ENDPOINTS = [
 });
 const blob = await res.blob();`,
       py: (base: string) => `import requests
-r = requests.post("${base}/echo/tts", json={
+r = requests.post("${base}/echo/tts", headers={
+    "Authorization": "Bearer YOUR_API_KEY"
+}, json={
     "voiceId": "EXAVITQu4vr4xnSDxMaL",
     "text": "Hello world",
     "modelId": "echo_flash_v2.5",
@@ -78,22 +93,40 @@ with open("audio.mp3", "wb") as f:
     method: "POST",
     path: "/echo/stt",
     fullPath: "/api/echo/stt",
-    desc: "Transcribes audio to text. Send as multipart form data with a file field.",
-    params: [{ name: "file", type: "File (multipart)", required: true }] as Param[],
+    desc: "Transcribes audio to text with Deepgram. Send either a multipart file or a JSON URL payload.",
+    params: [
+      { name: "file", type: "File (multipart)" },
+      { name: "url", type: "string (audio URL)" },
+    ] as Param[],
     responseStatus: "200 OK",
-    responseExample: { text: "Hello world" },
+    responseExample: { text: "Hello world", language: "en", provider: "deepgram", model: "nova-3" },
     examples: {
-      curl: (base: string) => `curl -X POST "${base}/echo/stt" -F "file=@audio.mp3"`,
-      js: (base: string) => `const fd = new FormData();
-fd.append("file", audioFile);
-const res = await fetch("${base}/echo/stt", { method: "POST", body: fd });`,
-      py: (base: string) => `r = requests.post("${base}/echo/stt", files={"file": open("audio.mp3", "rb")})`,
+      curl: (base: string) => `curl -X POST "${base}/echo/stt" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://static.deepgram.com/examples/Bueller-Life-moves-pretty-fast.wav"}'`,
+      js: (base: string) => `const res = await fetch("${base}/echo/stt", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    url: "https://static.deepgram.com/examples/Bueller-Life-moves-pretty-fast.wav"
+  })
+});`,
+      py: (base: string) => `r = requests.post("${base}/echo/stt", headers={
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+}, json={
+    "url": "https://static.deepgram.com/examples/Bueller-Life-moves-pretty-fast.wav"
+})`,
     },
   },
   {
     id: "clone",
     category: "Voice",
-    title: "Voice Cloning",
+    title: "Clone",
     method: "POST",
     path: "/echo/clone",
     fullPath: "/api/echo/clone",
@@ -106,13 +139,20 @@ const res = await fetch("${base}/echo/stt", { method: "POST", body: fd });`,
     responseExample: { voice_id: "..." },
     examples: {
       curl: (base: string) => `curl -X POST "${base}/echo/clone" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
   -F "name=My Voice" -F "files=@sample1.mp3" -F "files=@sample2.mp3"`,
       js: (base: string) => `const fd = new FormData();
 fd.append("name", "My Voice");
 fd.append("files", file1);
 fd.append("files", file2);
-await fetch("${base}/echo/clone", { method: "POST", body: fd });`,
-      py: (base: string) => `r = requests.post("${base}/echo/clone", files=[("files", open("s.mp3", "rb"))], data={"name": "My Voice"})`,
+await fetch("${base}/echo/clone", {
+  method: "POST",
+  headers: { "Authorization": "Bearer YOUR_API_KEY" },
+  body: fd
+});`,
+      py: (base: string) => `r = requests.post("${base}/echo/clone", headers={
+    "Authorization": "Bearer YOUR_API_KEY"
+}, files=[("files", open("s.mp3", "rb"))], data={"name": "My Voice"})`,
     },
   },
   {
@@ -127,9 +167,13 @@ await fetch("${base}/echo/clone", { method: "POST", body: fd });`,
     responseStatus: "200 OK",
     responseExample: { assistants: [{ id: "asst_xxx", name: "..." }] },
     examples: {
-      curl: (base: string) => `curl "${base}/orbit/assistants"`,
-      js: (base: string) => `const res = await fetch("${base}/orbit/assistants");`,
-      py: (base: string) => `r = requests.get("${base}/orbit/assistants")`,
+      curl: (base: string) => `curl -H "Authorization: Bearer YOUR_API_KEY" "${base}/orbit/assistants"`,
+      js: (base: string) => `const res = await fetch("${base}/orbit/assistants", {
+  headers: { "Authorization": "Bearer YOUR_API_KEY" }
+});`,
+      py: (base: string) => `r = requests.get("${base}/orbit/assistants", headers={
+    "Authorization": "Bearer YOUR_API_KEY"
+})`,
     },
   },
   {
@@ -148,14 +192,20 @@ await fetch("${base}/echo/clone", { method: "POST", body: fd });`,
     responseExample: { id: "call_xxx", status: "ringing" },
     examples: {
       curl: (base: string) => `curl -X POST "${base}/orbit/call" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"assistantId":"asst_xxx","customerNumber":"+15551234567"}'`,
       js: (base: string) => `await fetch("${base}/orbit/call", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+  },
   body: JSON.stringify({ assistantId: "asst_xxx", customerNumber: "+15551234567" })
 });`,
-      py: (base: string) => `requests.post("${base}/orbit/call", json={"assistantId":"asst_xxx","customerNumber":"+15551234567"})`,
+      py: (base: string) => `requests.post("${base}/orbit/call", headers={
+    "Authorization": "Bearer YOUR_API_KEY"
+}, json={"assistantId":"asst_xxx","customerNumber":"+15551234567"})`,
     },
   },
   {
@@ -170,26 +220,47 @@ await fetch("${base}/echo/clone", { method: "POST", body: fd });`,
     responseStatus: "200 OK",
     responseExample: { calls: [{ id: "call_xxx", type: "outboundPhoneCall" }] },
     examples: {
-      curl: (base: string) => `curl "${base}/orbit/calls?limit=100"`,
-      js: (base: string) => `const res = await fetch("${base}/orbit/calls?limit=100");`,
-      py: (base: string) => `r = requests.get("${base}/orbit/calls", params={"limit": 100})`,
+      curl: (base: string) => `curl -H "Authorization: Bearer YOUR_API_KEY" "${base}/orbit/calls?limit=100"`,
+      js: (base: string) => `const res = await fetch("${base}/orbit/calls?limit=100", {
+  headers: { "Authorization": "Bearer YOUR_API_KEY" }
+});`,
+      py: (base: string) => `r = requests.get("${base}/orbit/calls", headers={
+    "Authorization": "Bearer YOUR_API_KEY"
+}, params={"limit": 100})`,
     },
   },
 ] as const;
 
 const CATEGORIES = [...new Set(ENDPOINTS.map((e) => e.category))];
 
-export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) {
+export default function DocsPane({
+  apiBaseUrl,
+  onCopyFeedback,
+  isAuthenticated = false,
+  apiKeyName = "",
+  onApiKeyNameChange,
+  onCreateApiKey,
+  onRefreshApiKeys,
+  isApiKeysLoading = false,
+  apiKeysStatus = "",
+  newlyCreatedApiKey = "",
+  onCopyNewApiKey,
+}: DocsPaneProps) {
   const [docTab, setDocTab] = useState<DocTab>("documentation");
   const [selectedId, setSelectedId] = useState<string>("tts");
   const [codeTab, setCodeTab] = useState<Record<string, "curl" | "js" | "py">>({});
 
   const selected = ENDPOINTS.find((e) => e.id === selectedId) ?? ENDPOINTS[0];
   const currentCodeTab = (codeTab[selected.id] ?? "curl") as "curl" | "js" | "py";
+  const normalizedInboundCallNumber = INBOUND_CALL_NUMBER.replace(/[^\d+]/g, "");
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    onCopyFeedback("Copied!");
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopyFeedback("Copied!");
+    } catch {
+      onCopyFeedback("Copy failed");
+    }
   };
 
   return (
@@ -217,7 +288,7 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
           <header className="docs-hero">
             <h1 className="docs-hero-title">Voice AI Platform</h1>
             <p className="docs-hero-subtitle">
-              Build voice experiences with Text-to-Speech, Speech-to-Text, Voice Cloning, and AI-powered phone agents.
+              Build voice experiences with Text-to-Speech, Speech-to-Text, Clone, and AI-powered phone agents.
             </p>
           </header>
 
@@ -226,42 +297,42 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
             <div className="docs-card-grid docs-card-grid-3">
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <AudioWaveform size={24} className="text-lime" />
+                  <AudioWaveform size={20} className="text-lime" />
                 </div>
                 <h3 className="docs-card-title">Text-to-Speech</h3>
                 <p className="docs-card-desc">Generate lifelike speech from text with multiple voices and models.</p>
               </div>
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <Mic size={24} className="text-lime" />
+                  <Mic size={20} className="text-lime" />
                 </div>
                 <h3 className="docs-card-title">Speech-to-Text</h3>
                 <p className="docs-card-desc">Transcribe audio to text with high accuracy.</p>
               </div>
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <Volume2 size={24} className="text-lime" />
+                  <Volume2 size={20} className="text-lime" />
                 </div>
-                <h3 className="docs-card-title">Voice Cloning</h3>
+                <h3 className="docs-card-title">Clone</h3>
                 <p className="docs-card-desc">Create custom voices from samples.</p>
               </div>
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <Users size={24} className="text-lime" />
+                  <Users size={20} className="text-lime" />
                 </div>
                 <h3 className="docs-card-title">AI Agents</h3>
                 <p className="docs-card-desc">Create and deploy voice AI assistants.</p>
               </div>
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <PhoneCall size={24} className="text-lime" />
+                  <PhoneCall size={20} className="text-lime" />
                 </div>
                 <h3 className="docs-card-title">Phone Integration</h3>
                 <p className="docs-card-desc">Inbound and outbound phone calls.</p>
               </div>
               <div className="docs-card">
                 <div className="docs-card-icon">
-                  <Zap size={24} className="text-lime" />
+                  <Zap size={20} className="text-lime" />
                 </div>
                 <h3 className="docs-card-title">Real-time</h3>
                 <p className="docs-card-desc">Sub-600ms response times with live transcription.</p>
@@ -274,19 +345,19 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
             <p className="docs-section-desc">Dial this number from your phone to test the configured inbound line.</p>
             <div className="docs-call-card">
               <div className="docs-call-card-inner">
-                <Phone size={32} className="text-lime docs-call-icon" />
+                <Phone size={20} className="text-lime docs-call-icon" />
                 <div className="docs-call-number">{INBOUND_CALL_NUMBER}</div>
                 <div className="docs-call-actions">
-                  <a href={`tel:${INBOUND_CALL_NUMBER.replace(/\s/g, "")}`} className="btn primary docs-call-btn">
-                    <Phone size={18} />
+                  <a href={`tel:${normalizedInboundCallNumber}`} className="btn primary docs-call-btn">
+                    <Phone size={16} />
                     Call now
                   </a>
                   <button
                     type="button"
                     className="btn docs-call-btn"
-                    onClick={() => copyToClipboard(INBOUND_CALL_NUMBER.replace(/\s/g, ""))}
+                    onClick={() => copyToClipboard(normalizedInboundCallNumber)}
                   >
-                    <Copy size={18} />
+                    <Copy size={16} strokeWidth={2.25} />
                     Copy number
                   </button>
                 </div>
@@ -359,28 +430,28 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
             <h2 className="docs-section-title">Configuration</h2>
             <div className="docs-config-grid">
               <div className="docs-config-item">
-                <Key size={18} className="text-lime" />
+                <Key size={16} className="text-lime" />
                 <div>
                   <code className="docs-inline-code">TTS_PROVIDER_KEY</code>
                   <p className="docs-config-desc">TTS/STT provider API key</p>
                 </div>
               </div>
               <div className="docs-config-item">
-                <Key size={18} className="text-lime" />
+                <Key size={16} className="text-lime" />
                 <div>
                   <code className="docs-inline-code">ORBIT_SECRET</code>
                   <p className="docs-config-desc">API key for voice agents and calls</p>
                 </div>
               </div>
               <div className="docs-config-item">
-                <Key size={18} className="text-lime" />
+                <Key size={16} className="text-lime" />
                 <div>
                   <code className="docs-inline-code">PHONE_NUMBER_ID</code>
                   <p className="docs-config-desc">Phone number ID for outbound calls</p>
                 </div>
               </div>
               <div className="docs-config-item">
-                <Key size={18} className="text-lime" />
+                <Key size={16} className="text-lime" />
                 <div>
                   <code className="docs-inline-code">NEXT_PUBLIC_ORBIT_TOKEN</code>
                   <p className="docs-config-desc">Client-side public key for web calls</p>
@@ -402,7 +473,7 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
               onClick={() => copyToClipboard(apiBaseUrl)}
               title="Copy base URL"
             >
-              <Copy size={14} />
+              <Copy size={16} strokeWidth={2.25} />
             </button>
           </div>
           <div className="docs-api-layout">
@@ -427,29 +498,90 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
 
           {/* Main content */}
           <main className="docs-api-main">
-            <div className="docs-endpoint-header">
+            <section className="docs-endpoint-header docs-panel">
               <div className="docs-endpoint-title-row">
                 <h1 className="docs-endpoint-title">{selected.title}</h1>
                 <span className={`docs-method-badge docs-method-${selected.method.toLowerCase()}`}>{selected.method}</span>
               </div>
-              <code className="docs-endpoint-url">{apiBaseUrl}{selected.path}</code>
-            </div>
-
-            <section className="docs-api-section">
-              <h3 className="docs-api-section-title">Authentication</h3>
-              <p className="docs-api-section-desc">
-                Include your API key in the <code className="docs-code-inline">Authorization</code> header as a Bearer token.
-                Retrieve your key from the dashboard.
-              </p>
-              <div className="docs-auth-example">
-                <code>Authorization: Bearer YOUR_API_KEY</code>
+              <p className="docs-endpoint-summary">{selected.desc}</p>
+              <div className="docs-endpoint-meta">
+                <span className="docs-endpoint-chip">{selected.category}</span>
+                <code className="docs-endpoint-url">{apiBaseUrl}{selected.path}</code>
+                <button
+                  type="button"
+                  className="docs-endpoint-copy"
+                  onClick={() => copyToClipboard(`${apiBaseUrl}${selected.path}`)}
+                  title="Copy endpoint URL"
+                >
+                  <Copy size={16} strokeWidth={2.25} />
+                </button>
               </div>
             </section>
 
-            {selected.params && selected.params.length > 0 && (
-              <section className="docs-api-section">
-                <h3 className="docs-api-section-title">Request</h3>
-                <p className="docs-api-section-desc">{selected.desc}</p>
+            <section className="docs-api-section docs-panel">
+              <h3 className="docs-api-section-title">Authentication</h3>
+              <p className="docs-api-section-desc">
+                Include your API key using either <code className="docs-code-inline">Authorization: Bearer ...</code> or <code className="docs-code-inline">x-api-key</code>.
+                Generate keys in the Docs <code className="docs-code-inline">API Access</code> panel (or <code className="docs-code-inline">Settings → API Keys</code>).
+              </p>
+              <div className="docs-auth-example">
+                <code>Authorization: Bearer YOUR_API_KEY</code>
+                <br />
+                <code>x-api-key: YOUR_API_KEY</code>
+              </div>
+              {isAuthenticated && onCreateApiKey && onApiKeyNameChange ? (
+                <div className="docs-auth-create">
+                  <div className="api-keys-create-row docs-auth-create-row">
+                    <input
+                      type="text"
+                      value={apiKeyName}
+                      onChange={(e) => onApiKeyNameChange(e.target.value)}
+                      placeholder="Key name (e.g., Production app)"
+                      title="API key name"
+                    />
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={onCreateApiKey}
+                      disabled={isApiKeysLoading}
+                    >
+                      Create Key
+                    </button>
+                    {onRefreshApiKeys && (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={onRefreshApiKeys}
+                        disabled={isApiKeysLoading}
+                      >
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+                  {newlyCreatedApiKey && (
+                    <div className="api-key-secret">
+                      <code>{newlyCreatedApiKey}</code>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={onCopyNewApiKey}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                  {apiKeysStatus && <div className="settings-note docs-auth-status">{apiKeysStatus}</div>}
+                </div>
+              ) : (
+                <div className="settings-note docs-auth-status">
+                  Sign in to create API keys directly from Docs.
+                </div>
+              )}
+            </section>
+
+            <section className="docs-api-section docs-panel">
+              <h3 className="docs-api-section-title">Request</h3>
+              {selected.params && selected.params.length > 0 ? (
                 <div className="docs-params-table">
                   <div className="docs-params-header">
                     <span>Parameter</span>
@@ -466,8 +598,12 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
+              ) : (
+                <p className="docs-empty-note">
+                  No body parameters are required for this endpoint.
+                </p>
+              )}
+            </section>
 
             <div className="docs-code-response-row">
               <div className="docs-code-block">
@@ -486,13 +622,13 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
                       <option value="py">Python</option>
                     </select>
                     <button type="button" className="docs-code-copy" onClick={() => copyToClipboard(selected.examples[currentCodeTab](apiBaseUrl))} title="Copy">
-                      <Copy size={14} />
+                      <Copy size={16} strokeWidth={2.25} />
                     </button>
                   </div>
                 </div>
                 <pre className="docs-code-pre">{selected.examples[currentCodeTab](apiBaseUrl)}</pre>
                 <button type="button" className="docs-try-btn">
-                  <Play size={14} />
+                  <Play size={16} />
                   Try it
                 </button>
               </div>
@@ -501,7 +637,7 @@ export default function DocsPane({ apiBaseUrl, onCopyFeedback }: DocsPaneProps) 
                 <div className="docs-response-header">
                   <span className="docs-response-status">{selected.responseStatus}</span>
                   <button type="button" className="docs-code-copy" onClick={() => copyToClipboard(JSON.stringify(selected.responseExample, null, 2))} title="Copy">
-                    <Copy size={14} />
+                    <Copy size={16} strokeWidth={2.25} />
                   </button>
                 </div>
                 <pre className="docs-response-pre">{JSON.stringify(selected.responseExample, null, 2)}</pre>
