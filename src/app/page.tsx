@@ -82,6 +82,9 @@ export default function Dashboard() {
   const [audioSubTab, setAudioSubTab] = useState<"voices" | "tts" | "stt" | "history">("voices");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [voiceFilterCategory, setVoiceFilterCategory] = useState<string>("all");
+  const [voiceFilterLanguage, setVoiceFilterLanguage] = useState<string>("all");
+  const [voiceSearchQuery, setVoiceSearchQuery] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("");
   const [ttsText, setTtsText] = useState(
     "Okay, you are NOT going to believe this. You know how I've been totally stuck on that short story? Like, staring at the screen for HOURS, just... nothing? I was seriously about to just trash the whole thing. But then! Last night, this one little phrase popped into my head. And it was like... the FLOODGATES opened! It all just CLICKED. I am so incredibly PUMPED. It went from feeling like a chore to feeling like... MAGIC."
@@ -1730,12 +1733,107 @@ export default function Dashboard() {
                 <button type="button" className={`audio-sub-tab ${audioSubTab === "stt" ? "active" : ""}`} onClick={() => setAudioSubTab("stt")}>Speech to Text</button>
                 <button type="button" className={`audio-sub-tab ${audioSubTab === "history" ? "active" : ""}`} onClick={() => setAudioSubTab("history")}>History</button>
               </div>
-              {audioSubTab === "voices" && (
+              {audioSubTab === "voices" && (() => {
+                // Derive unique categories and languages from voice data
+                const allCategories = [...new Set(voices.map(v => v.category || "unknown"))].sort();
+                const allLanguages = [...new Set(voices.map(v => v.labels?.language || "Unknown").filter(Boolean))].sort();
+
+                // Filter voices based on active filters
+                const filtered = voices.filter(v => {
+                  if (voiceFilterCategory !== "all" && (v.category || "unknown") !== voiceFilterCategory) return false;
+                  if (voiceFilterLanguage !== "all" && (v.labels?.language || "Unknown") !== voiceFilterLanguage) return false;
+                  if (voiceSearchQuery) {
+                    const q = voiceSearchQuery.toLowerCase();
+                    const matchesName = v.name.toLowerCase().includes(q);
+                    const matchesLang = (v.labels?.language || "").toLowerCase().includes(q);
+                    const matchesAccent = (v.labels?.accent || "").toLowerCase().includes(q);
+                    const matchesDesc = (v.description || "").toLowerCase().includes(q);
+                    if (!matchesName && !matchesLang && !matchesAccent && !matchesDesc) return false;
+                  }
+                  return true;
+                });
+
+                // Group filtered voices by category
+                const grouped: Record<string, Voice[]> = {};
+                for (const v of filtered) {
+                  const cat = v.category || "unknown";
+                  if (!grouped[cat]) grouped[cat] = [];
+                  grouped[cat].push(v);
+                }
+
+                // Order: cloned first, then premade, then rest alphabetically
+                const categoryOrder = ["cloned", "premade", "generated", "professional"];
+                const sortedCats = Object.keys(grouped).sort((a, b) => {
+                  const ai = categoryOrder.indexOf(a);
+                  const bi = categoryOrder.indexOf(b);
+                  if (ai !== -1 && bi !== -1) return ai - bi;
+                  if (ai !== -1) return -1;
+                  if (bi !== -1) return 1;
+                  return a.localeCompare(b);
+                });
+
+                const categoryLabel = (cat: string) => {
+                  const labels: Record<string, string> = {
+                    cloned: "🎙️ Cloned Voices",
+                    premade: "🌍 Premade Voices",
+                    generated: "✨ Generated Voices",
+                    professional: "💼 Professional Voices",
+                  };
+                  return labels[cat] || `📁 ${cat.charAt(0).toUpperCase() + cat.slice(1)}`;
+                };
+
+                return (
                 <div className="tab-pane active">
                   <div className="pane-header">
                     <span className="pane-title">Voice Library</span>
-                    <span className="pane-meta">{voices.length} Voices Available</span>
+                    <span className="pane-meta">{filtered.length} of {voices.length} Voices</span>
                   </div>
+
+                  {/* Filter Bar */}
+                  <div className="voice-filter-bar">
+                    <input
+                      type="text"
+                      className="voice-search-input"
+                      placeholder="Search voices by name, language, accent…"
+                      value={voiceSearchQuery}
+                      onChange={(e) => setVoiceSearchQuery(e.target.value)}
+                      title="Search voices"
+                    />
+                    <select
+                      className="voice-filter-select"
+                      value={voiceFilterCategory}
+                      onChange={(e) => setVoiceFilterCategory(e.target.value)}
+                      title="Filter by category"
+                      aria-label="Filter by category"
+                    >
+                      <option value="all">All Categories</option>
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="voice-filter-select"
+                      value={voiceFilterLanguage}
+                      onChange={(e) => setVoiceFilterLanguage(e.target.value)}
+                      title="Filter by language"
+                      aria-label="Filter by language"
+                    >
+                      <option value="all">All Languages</option>
+                      {allLanguages.map(lang => (
+                        <option key={lang} value={lang}>{lang}</option>
+                      ))}
+                    </select>
+                    {(voiceFilterCategory !== "all" || voiceFilterLanguage !== "all" || voiceSearchQuery) && (
+                      <button
+                        type="button"
+                        className="voice-filter-clear"
+                        onClick={() => { setVoiceFilterCategory("all"); setVoiceFilterLanguage("all"); setVoiceSearchQuery(""); }}
+                      >
+                        <X size={14} /> Clear
+                      </button>
+                    )}
+                  </div>
+
                   {currentAudio && (
                     <div className={`audio-visualizer audio-viz-${voicePreviewVizId.replace(/:/g, "")} mb-6`} aria-hidden>
                       <style>{`
@@ -1751,39 +1849,57 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
-                  <div className="voice-grid">
-                    {voices.length === 0 ? (
-                      <div className="placeholder-pane h-32 voice-grid-placeholder">Loading voices…</div>
-                    ) : (
-                      voices.map((v) => (
-                        <div key={v.voice_id} className="voice-card-modern">
-                          <div className="voice-card-header">
-                            <div className="voice-card-avatar">
-                              <Volume2 size={18} className="text-lime" />
-                            </div>
-                            <div className="voice-card-meta">
-                              <div className="voice-card-name">{v.name}</div>
-                              <div className="voice-card-lang">{v.labels?.language || v.labels?.accent || v.category || "General"}</div>
-                            </div>
-                          </div>
-                          <div className="voice-card-preview">
-                            {v.preview_url ? (
-                              <audio
-                                src={v.preview_url}
-                                controls
-                                preload="metadata"
-                                className="voice-preview-audio"
-                              />
-                            ) : (
-                              <span className="voice-no-preview text-faint text-2xs">No preview</span>
-                            )}
-                          </div>
+
+                  {voices.length === 0 ? (
+                    <div className="placeholder-pane h-32 voice-grid-placeholder">Loading voices…</div>
+                  ) : filtered.length === 0 ? (
+                    <div className="placeholder-pane h-32 voice-grid-placeholder">No voices match your filters.</div>
+                  ) : (
+                    sortedCats.map(cat => (
+                      <div key={cat} className="voice-category-section">
+                        <div className="voice-category-header">
+                          <span className="voice-category-title">{categoryLabel(cat)}</span>
+                          <span className="voice-category-count">{grouped[cat].length}</span>
                         </div>
-                      ))
-                    )}
-                  </div>
+                        <div className="voice-grid">
+                          {grouped[cat].map((v) => (
+                            <div key={v.voice_id} className="voice-card-modern">
+                              <div className="voice-card-header">
+                                <div className="voice-card-avatar">
+                                  <Volume2 size={18} className="text-lime" />
+                                </div>
+                                <div className="voice-card-meta">
+                                  <div className="voice-card-name">{v.name}</div>
+                                  <div className="voice-card-lang">{v.labels?.language || v.labels?.accent || "General"}</div>
+                                </div>
+                              </div>
+                              <div className="voice-card-tags">
+                                {v.labels?.gender && <span className="voice-tag">{v.labels.gender}</span>}
+                                {v.labels?.accent && <span className="voice-tag">{v.labels.accent}</span>}
+                                {v.labels?.use_case && <span className="voice-tag">{v.labels.use_case}</span>}
+                                {v.labels?.age && <span className="voice-tag">{v.labels.age}</span>}
+                              </div>
+                              <div className="voice-card-preview">
+                                {v.preview_url ? (
+                                  <audio
+                                    src={v.preview_url}
+                                    controls
+                                    preload="metadata"
+                                    className="voice-preview-audio"
+                                  />
+                                ) : (
+                                  <span className="voice-no-preview text-faint text-2xs">No preview</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              )}
+                );
+              })()}
               {audioSubTab === "tts" && (
                 <div className="tab-pane active tts-pane-layout">
               <div className="tts-top-section">
