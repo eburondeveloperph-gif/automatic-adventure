@@ -360,12 +360,14 @@ main.main-full-width-height .docs-pane-wrapper {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 main.main-full-width-height .docs-pane-wrapper .docs-v2 {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 main.main-full-width-height .docs-pane-wrapper .docs-api-wrapper {
   flex: 1;
@@ -3446,11 +3448,14 @@ body.light-mode .vl-search-row svg {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 .docs-pane-wrapper .docs-v2 {
   flex: 1;
   min-height: 0;
+  flex-shrink: 0;
 }
 .docs-base-bar {
   display: flex;
